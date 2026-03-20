@@ -90,6 +90,15 @@ for var in all_vars:
         })
 missing_df = pd.DataFrame(missing_report)
 
+# --- Exclude variables with >95% missing ---
+vars_to_exclude = set(
+    missing_df.loc[missing_df['Pct_Missing'] > 95, 'Variable'].tolist()
+)
+variable_sets = {
+    name: [v for v in feats if v not in vars_to_exclude]
+    for name, feats in variable_sets.items()
+}
+
 # --- Baseline characteristics ---
 def calc_baseline(df, var, group='outcome'):
     pos = df[df[group] == 1][var].dropna()
