@@ -32,7 +32,7 @@ python analysis/bc_prediction_figures.py --results-dir results/
 
 ## Data
 
-De-identified data are available from the corresponding author upon reasonable request, subject to institutional data sharing agreements.
+The datasets used in this study are not publicly available due to restrictions imposed by the Institutional Review Boards (IRBs) of the participating hospitals. Access to data may be subject to separate data sharing agreements with each institution.
 
 ## License
 
