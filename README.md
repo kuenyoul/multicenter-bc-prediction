@@ -2,7 +2,7 @@
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19122332.svg)](https://doi.org/10.5281/zenodo.19122332)
 
-Analysis code for: **"A pooled multicenter model outperforms hospital-specific models for laboratory-based bacteremia prediction"**
+Analysis code for: **"Do Hospitals Need Their Own Prediction Models? A Multicenter Comparison of Pooled vs Hospital-Specific Machine Learning for Bacteremia Prediction"**
 
 ## Overview
 

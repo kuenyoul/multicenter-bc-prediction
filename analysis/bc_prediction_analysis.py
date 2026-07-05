@@ -159,10 +159,6 @@ for var in continuous_vars:
         train_norm[var] = np.log1p(np.maximum(train_norm[var] + offset, 0))
         test_norm[var] = np.log1p(np.maximum(test_norm[var] + offset, 0))
 
-scaler_global = StandardScaler()
-train_norm[continuous_vars] = scaler_global.fit_transform(train_norm[continuous_vars])
-test_norm[continuous_vars] = scaler_global.transform(test_norm[continuous_vars])
-
 train_raw = train_df.drop(columns=['ldh', 'ferr'], errors='ignore')
 test_raw = test_df.drop(columns=['ldh', 'ferr'], errors='ignore')
 train_norm = train_norm.drop(columns=['ld_ratio', 'ferr_ratio_log10'], errors='ignore')
@@ -194,20 +190,23 @@ def lasso_select(dataframe, features, target='outcome'):
     return selected if selected else valid_cols
 
 
-def evaluate_cv(model, X_raw, y, cv=10, model_name='XGB'):
+def evaluate_cv(model, dataframe, features, cv=10, model_name='XGB'):
+    y = dataframe['outcome'].values
     skf = StratifiedKFold(n_splits=cv, shuffle=True, random_state=42)
     aurocs, auprcs = [], []
-    for tr_idx, vl_idx in skf.split(X_raw, y):
-        X_tr, X_vl = X_raw.iloc[tr_idx], X_raw.iloc[vl_idx]
+    for tr_idx, vl_idx in skf.split(np.zeros(len(y)), y):
+        tr_df, vl_df = dataframe.iloc[tr_idx], dataframe.iloc[vl_idx]
+        fold_sel = lasso_select(tr_df, features)
+        X_tr, X_vl = tr_df[fold_sel], vl_df[fold_sel]
         y_tr, y_vl = y[tr_idx], y[vl_idx]
         if model_name in ('LR', 'RF'):
             imp = SimpleImputer(strategy='median', keep_empty_features=True)
-            X_tr = pd.DataFrame(imp.fit_transform(X_tr), columns=X_raw.columns)
-            X_vl = pd.DataFrame(imp.transform(X_vl), columns=X_raw.columns)
+            X_tr = pd.DataFrame(imp.fit_transform(X_tr), columns=fold_sel)
+            X_vl = pd.DataFrame(imp.transform(X_vl), columns=fold_sel)
             if model_name == 'LR':
                 sc = StandardScaler()
-                X_tr = pd.DataFrame(sc.fit_transform(X_tr), columns=X_raw.columns)
-                X_vl = pd.DataFrame(sc.transform(X_vl), columns=X_raw.columns)
+                X_tr = pd.DataFrame(sc.fit_transform(X_tr), columns=fold_sel)
+                X_vl = pd.DataFrame(sc.transform(X_vl), columns=fold_sel)
         m = clone(model)
         m.fit(X_tr, y_tr)
         yp = m.predict_proba(X_vl)[:, 1]
@@ -272,7 +271,7 @@ for pipe_name, data in pipelines.items():
 
         # 10-fold CV
         for mn, model in models.items():
-            cv = evaluate_cv(model, X_train_native, y_train, cv=10, model_name=mn)
+            cv = evaluate_cv(model, cur_train, features, cv=10, model_name=mn)
             results_a.append({
                 'Variable_Set': set_name, 'Model': mn,
                 'N_Features': len(sel),
@@ -325,6 +324,7 @@ for pipe_name, data in pipelines.items():
     pipeline_results_test_a[pipe_name] = pd.DataFrame(test_results_a)
 
     # --- Part B: Multi-center generalization ---
+    tuned_xgb = dict(n_estimators=200, learning_rate=0.03, max_depth=6, subsample=0.8)
     selected_sets = ['Set2_Hematology', 'Set6_Hemat+Other', 'Set7_All']
     results_b = []
     hospitals = [1, 2, 3]
@@ -344,8 +344,8 @@ for pipe_name, data in pipelines.items():
         pooled = {
             'LR': LogisticRegression(max_iter=1000, random_state=42).fit(X_tr_sc, y_tr),
             'RF': RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1).fit(X_tr_imp, y_tr),
-            'XGB': XGBClassifier(n_estimators=100, random_state=42, use_label_encoder=False,
-                                 eval_metric='logloss', verbosity=0).fit(X_tr_nat, y_tr),
+            'XGB': XGBClassifier(random_state=42, use_label_encoder=False,
+                                 eval_metric='logloss', verbosity=0, **tuned_xgb).fit(X_tr_nat, y_tr),
         }
 
         for th in ['Pooled'] + hospitals:
@@ -378,8 +378,8 @@ for pipe_name, data in pipelines.items():
             hmodels = {
                 'LR': LogisticRegression(max_iter=1000, random_state=42).fit(X_h_sc, y_h),
                 'RF': RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1).fit(X_h_imp, y_h),
-                'XGB': XGBClassifier(n_estimators=100, random_state=42, use_label_encoder=False,
-                                     eval_metric='logloss', verbosity=0).fit(X_h_nat, y_h),
+                'XGB': XGBClassifier(random_state=42, use_label_encoder=False,
+                                     eval_metric='logloss', verbosity=0, **tuned_xgb).fit(X_h_nat, y_h),
             }
             for tsh in hospitals:
                 t_h = cur_test[cur_test['hospital'] == tsh]
